@@ -1,25 +1,19 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import warnings
-import cv2
-import mmcv
-import os
+import numpy as np
+import torch
 
 from mmdet.models import build_detector
 
 from mmtrack.core import outs2results
-import numpy as np
+from addict import Dict
 from ..builder import MODELS, build_motion, build_reid, build_tracker
 from ..motion import CameraMotionCompensation, LinearMotion
 from .base import BaseMultiObjectTracker
 
 
 @MODELS.register_module()
-class Tracktor(BaseMultiObjectTracker):
-    """Tracking without bells and whistles.
-
-    Details can be found at `Tracktor<https://arxiv.org/abs/1903.05625>`_.
-    """
-
+class MyTracktor(BaseMultiObjectTracker):
     def __init__(self,
                  detector=None,
                  reid=None,
@@ -82,10 +76,73 @@ class Tracktor(BaseMultiObjectTracker):
         raise NotImplementedError(
             'Please train `detector` and `reid` models firstly, then \
                 inference with Tracktor.')
+    
+    def extract_feats(self, img, img_metas, ref_img, ref_img_metas):
+        frame_id = img_metas[0].get('frame_id', -1)
+        assert frame_id >= 0
+        num_left_ref_imgs = img_metas[0].get('num_left_ref_imgs', -1)
+        frame_stride = img_metas[0].get('frame_stride', -1)
+
+        # test with adaptive stride
+        if frame_stride < 1:
+            if frame_id == 0:
+                self.memo = Dict()
+                self.memo.img_metas = ref_img_metas[0]
+                ref_x = self.detector.extract_feat(ref_img[0])
+                # 'tuple' object (e.g. the output of FPN) does not support
+                # item assignment
+                self.memo.feats = []
+                for i in range(len(ref_x)):
+                    self.memo.feats.append(ref_x[i])
+
+            x = self.detector.extract_feat(img)
+            ref_x = self.memo.feats.copy()
+            for i in range(len(x)):
+                ref_x[i] = torch.cat((ref_x[i], x[i]), dim=0)
+            ref_img_metas = self.memo.img_metas.copy()
+            ref_img_metas.extend(img_metas)
+        # test with fixed stride
+        else:
+            if frame_id == 0:
+                self.memo = Dict()
+                self.memo.img_metas = ref_img_metas[0]
+                ref_x = self.detector.extract_feat(ref_img[0])
+                # 'tuple' object (e.g. the output of FPN) does not support
+                # item assignment
+                self.memo.feats = []
+                # the features of img is same as ref_x[i][[num_left_ref_imgs]]
+                x = []
+                for i in range(len(ref_x)):
+                    self.memo.feats.append(ref_x[i])
+                    x.append(ref_x[i][[num_left_ref_imgs]])
+            elif frame_id % frame_stride == 0:
+                assert ref_img is not None
+                x = []
+                ref_x = self.detector.extract_feat(ref_img[0])
+                for i in range(len(ref_x)):
+                    self.memo.feats[i] = torch.cat(
+                        (self.memo.feats[i], ref_x[i]), dim=0)[1:]
+                    x.append(self.memo.feats[i][[num_left_ref_imgs]])
+                self.memo.img_metas.extend(ref_img_metas[0])
+                self.memo.img_metas = self.memo.img_metas[1:]
+            else:
+                assert ref_img is None
+                x = self.detector.extract_feat(img)
+
+            ref_x = self.memo.feats.copy()
+            for i in range(len(x)):
+                ref_x[i][num_left_ref_imgs] = x[i]
+            ref_img_metas = self.memo.img_metas.copy()
+            ref_img_metas[num_left_ref_imgs] = img_metas[0]
+
+        return x, img_metas, ref_x, ref_img_metas
 
     def simple_test(self,
                     img,
                     img_metas,
+                    ref_img=None,
+                    ref_img_metas=None,
+                    proposals=None,
                     rescale=False,
                     public_bboxes=None,
                     **kwargs):
@@ -110,43 +167,14 @@ class Tracktor(BaseMultiObjectTracker):
         if frame_id == 0:
             self.tracker.reset()
 
-        x = self.detector.extract_feat(img)
+        if ref_img is not None:
+            ref_img = ref_img[0]
+        if ref_img_metas is not None:
+            ref_img_metas = ref_img_metas[0]
+        x, img_metas, ref_x, ref_img_metas = self.extract_feats(
+            img, img_metas, ref_img, ref_img_metas)
 
-        # for a in x:
-        #     print(a.shape)
-
-        # Assume the tuple is named 'tensor_tuple'
-        # for idx, x_tensor in enumerate(x):
-        #     print(f"Processing tensor {idx}...")
-        #     print(f"Input tensor shape: {x_tensor.shape}")
-
-        #     # Convert the tensor to a numpy array
-        #     tensor_np = x_tensor.cpu().numpy()
-        #     print(f"Output numpy array shape: {tensor_np.shape}")
-
-        #     # Reshape the array to a 2D image
-        #     tensor_img = tensor_np.reshape(
-        #         tensor_np.shape[1], tensor_np.shape[2], tensor_np.shape[3], 1)
-        #     print(f"Output numpy array shape: {tensor_img.shape}")
-
-        #     # Scale the pixel values to the range [0, 255]
-        #     tensor_img = (tensor_img - tensor_img.min()) * \
-        #         (255 / (tensor_img.max() - tensor_img.min()))
-
-        #     # convert the numpy array to the uint8 data type
-        #     tensor_img = tensor_img.astype('uint8')
-
-        #     # # resize the image to a smaller size
-        #     # resized_arr = cv2.resize(tensor_img, (512, 512), interpolation=cv2.INTER_NEAREST)
-
-        #     # Save the image using OpenCV
-        #     output_path = 'mmtracking/demo/'
-        #     filename = os.path.join(output_path, f'tensor_{idx}.png')
-        #     cv2.imwrite(filename, tensor_img)
-
-
-
-
+        # x = self.detector.extract_feat(img)
         if hasattr(self.detector, 'roi_head'):
             # TODO: check whether this is the case
             if public_bboxes is not None:
@@ -155,29 +183,14 @@ class Tracktor(BaseMultiObjectTracker):
             else:
                 proposals = self.detector.rpn_head.simple_test_rpn(
                     x, img_metas)
-                # print(proposals[0].shape)
-
-                # proposals_np =  proposals[0].cpu().numpy()
-                # proposals_np = (proposals_np - np.min(proposals_np)) * 255 / (np.max(proposals_np) - np.min(proposals_np))
-                # proposals_np = proposals_np.astype(np.uint8)
-                # image = np.reshape(proposals_np, (1000, 5, 1))
-                # cv2.imwrite("mmtracking/demo/tensor_image.jpg", image)
-
-                # x_np =  x[0].cpu().numpy()
-                # x_np = np.transpose(x_np, (1, 2, 3, 0))
-                # x_np = (x_np - np.min(x_np)) * 255 / (np.max(x_np) - np.min(x_np))
-                # x_np = x_np.astype(np.uint8)
-                # cv2.imwrite("mmtracking/demo/x_image.jpg", x_np)
-
-                # print(type(x))
-                # print(type(proposals))
-
-            
-
+                ref_proposals_list = self.detector.rpn_head.simple_test_rpn(
+                    ref_x, ref_img_metas)
             det_bboxes, det_labels = self.detector.roi_head.simple_test_bboxes(
                 x,
-                img_metas,
+                ref_x,
                 proposals,
+                ref_proposals_list,
+                img_metas,
                 self.detector.roi_head.test_cfg,
                 rescale=rescale)
             # TODO: support batch inference

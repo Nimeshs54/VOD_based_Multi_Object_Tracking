@@ -1,6 +1,8 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import warnings
 
+import cv2
+import numpy as np
 import torch
 from addict import Dict
 from mmdet.models import build_detector
@@ -133,6 +135,7 @@ class SELSA(BaseVideoDetector):
             'selsa video detector only supports 1 batch size per gpu for now.'
 
         all_imgs = torch.cat((img, ref_img[0]), dim=0)
+        # all_imgs = torch.cat((img, ref_img[0][0].unsqueeze(0)), dim=0)
         all_x = self.detector.extract_feat(all_imgs)
         x = []
         ref_x = []
