@@ -59,7 +59,8 @@ class TracktorTracker(BaseTracker):
         self.regression = regression
         self.reid = reid
 
-    def regress_tracks(self, x, img_metas, detector, frame_id, rescale=False):
+    # def regress_tracks(self, x, img_metas, detector, frame_id, rescale=False):
+    def regress_tracks(self, x, ref_x, img_metas, props, ref_props, detector, frame_id, rescale=False):
         """Regress the tracks to current frame."""
         memo = self.memo
         bboxes = memo.bboxes[memo.frame_ids == frame_id - 1]
@@ -67,8 +68,10 @@ class TracktorTracker(BaseTracker):
         if rescale:
             bboxes *= torch.tensor(img_metas[0]['scale_factor']).to(
                 bboxes.device)
+        # track_bboxes, track_scores = detector.roi_head.simple_test_bboxes(
+        #     x, img_metas, [bboxes], None, rescale=rescale)
         track_bboxes, track_scores = detector.roi_head.simple_test_bboxes(
-            x, img_metas, [bboxes], None, rescale=rescale)
+            x, ref_x, [bboxes], ref_props, img_metas, None, rescale=rescale)
         track_bboxes, track_labels, valid_inds = multiclass_nms(
             track_bboxes[0],
             track_scores[0],
@@ -87,6 +90,9 @@ class TracktorTracker(BaseTracker):
               img_metas,
               model,
               feats,
+              ref_feats,
+              prop,
+              ref_prop,
               bboxes,
               labels,
               frame_id,
@@ -147,9 +153,13 @@ class TracktorTracker(BaseTracker):
             if model.with_linear_motion:
                 self.tracks = model.linear_motion.track(self.tracks, frame_id)
 
+            # # propagate tracks
+            # prop_bboxes, prop_labels, prop_ids = self.regress_tracks(
+            #     feats, img_metas, model.detector, frame_id, rescale)
+
             # propagate tracks
             prop_bboxes, prop_labels, prop_ids = self.regress_tracks(
-                feats, img_metas, model.detector, frame_id, rescale)
+                feats, ref_feats, img_metas, prop, ref_prop, model.detector, frame_id, rescale)
 
             # filter bboxes with propagated tracks
             ious = bbox_overlaps(bboxes[:, :4], prop_bboxes[:, :4])

@@ -17,7 +17,7 @@ model = dict(
             checkpoint=  # noqa: E251
             'https://download.openmmlab.com/mmtracking/mot/reid/reid_r50_6e_mot20_20210803_212426-c83b1c01.pth'  # noqa: E501
         )))
-data_root = 'data/MOT20/'
+data_root = 'mmtracking/data/MOT20/'
 test_set = 'test'
 data = dict(
     train=dict(ann_file=data_root + 'annotations/train_cocoformat.json'),

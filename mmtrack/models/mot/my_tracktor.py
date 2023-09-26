@@ -2,10 +2,12 @@
 import warnings
 import numpy as np
 import torch
+import cv2
 
 from mmdet.models import build_detector
 
 from mmtrack.core import outs2results
+from mmtrack.models.vid.selsa import SELSA
 from addict import Dict
 from ..builder import MODELS, build_motion, build_reid, build_tracker
 from ..motion import CameraMotionCompensation, LinearMotion
@@ -76,66 +78,6 @@ class MyTracktor(BaseMultiObjectTracker):
         raise NotImplementedError(
             'Please train `detector` and `reid` models firstly, then \
                 inference with Tracktor.')
-    
-    def extract_feats(self, img, img_metas, ref_img, ref_img_metas):
-        frame_id = img_metas[0].get('frame_id', -1)
-        assert frame_id >= 0
-        num_left_ref_imgs = img_metas[0].get('num_left_ref_imgs', -1)
-        frame_stride = img_metas[0].get('frame_stride', -1)
-
-        # test with adaptive stride
-        if frame_stride < 1:
-            if frame_id == 0:
-                self.memo = Dict()
-                self.memo.img_metas = ref_img_metas[0]
-                ref_x = self.detector.extract_feat(ref_img[0])
-                # 'tuple' object (e.g. the output of FPN) does not support
-                # item assignment
-                self.memo.feats = []
-                for i in range(len(ref_x)):
-                    self.memo.feats.append(ref_x[i])
-
-            x = self.detector.extract_feat(img)
-            ref_x = self.memo.feats.copy()
-            for i in range(len(x)):
-                ref_x[i] = torch.cat((ref_x[i], x[i]), dim=0)
-            ref_img_metas = self.memo.img_metas.copy()
-            ref_img_metas.extend(img_metas)
-        # test with fixed stride
-        else:
-            if frame_id == 0:
-                self.memo = Dict()
-                self.memo.img_metas = ref_img_metas[0]
-                ref_x = self.detector.extract_feat(ref_img[0])
-                # 'tuple' object (e.g. the output of FPN) does not support
-                # item assignment
-                self.memo.feats = []
-                # the features of img is same as ref_x[i][[num_left_ref_imgs]]
-                x = []
-                for i in range(len(ref_x)):
-                    self.memo.feats.append(ref_x[i])
-                    x.append(ref_x[i][[num_left_ref_imgs]])
-            elif frame_id % frame_stride == 0:
-                assert ref_img is not None
-                x = []
-                ref_x = self.detector.extract_feat(ref_img[0])
-                for i in range(len(ref_x)):
-                    self.memo.feats[i] = torch.cat(
-                        (self.memo.feats[i], ref_x[i]), dim=0)[1:]
-                    x.append(self.memo.feats[i][[num_left_ref_imgs]])
-                self.memo.img_metas.extend(ref_img_metas[0])
-                self.memo.img_metas = self.memo.img_metas[1:]
-            else:
-                assert ref_img is None
-                x = self.detector.extract_feat(img)
-
-            ref_x = self.memo.feats.copy()
-            for i in range(len(x)):
-                ref_x[i][num_left_ref_imgs] = x[i]
-            ref_img_metas = self.memo.img_metas.copy()
-            ref_img_metas[num_left_ref_imgs] = img_metas[0]
-
-        return x, img_metas, ref_x, ref_img_metas
 
     def simple_test(self,
                     img,
@@ -166,15 +108,14 @@ class MyTracktor(BaseMultiObjectTracker):
         frame_id = img_metas[0].get('frame_id', -1)
         if frame_id == 0:
             self.tracker.reset()
-
         if ref_img is not None:
             ref_img = ref_img[0]
         if ref_img_metas is not None:
             ref_img_metas = ref_img_metas[0]
-        x, img_metas, ref_x, ref_img_metas = self.extract_feats(
-            img, img_metas, ref_img, ref_img_metas)
 
-        # x = self.detector.extract_feat(img)
+        x, img_metas, ref_x, ref_img_metas = SELSA.extract_feats(
+            self, img, img_metas, ref_img, ref_img_metas)
+
         if hasattr(self.detector, 'roi_head'):
             # TODO: check whether this is the case
             if public_bboxes is not None:
@@ -185,6 +126,7 @@ class MyTracktor(BaseMultiObjectTracker):
                     x, img_metas)
                 ref_proposals_list = self.detector.rpn_head.simple_test_rpn(
                     ref_x, ref_img_metas)
+
             det_bboxes, det_labels = self.detector.roi_head.simple_test_bboxes(
                 x,
                 ref_x,
@@ -197,6 +139,23 @@ class MyTracktor(BaseMultiObjectTracker):
             det_bboxes = det_bboxes[0]
             det_labels = det_labels[0]
             num_classes = self.detector.roi_head.bbox_head.num_classes
+
+            # checkkk
+            image_shape = (640, 1088, 3)
+            image = np.zeros(image_shape, dtype=np.uint8)
+            det_bboxes_cpu = det_bboxes.cpu()
+            det_bboxes_np = det_bboxes_cpu.numpy()
+
+            for bbox in det_bboxes_np:
+                x_min, y_min, x_max, y_max, _ = bbox
+                color = (0, 255, 0)
+                thickness = 2
+                cv2.rectangle(image, (int(x_min), int(y_min)), (int(x_max), int(y_max)), color, thickness)
+
+            output_image_path = "mmtracking/demo/det_mytrack_2.png"
+            cv2.imwrite(output_image_path, image)
+
+
         elif hasattr(self.detector, 'bbox_head'):
             num_classes = self.detector.bbox_head.num_classes
             raise NotImplementedError(
@@ -209,6 +168,9 @@ class MyTracktor(BaseMultiObjectTracker):
             img_metas=img_metas,
             model=self,
             feats=x,
+            ref_feats=ref_x,
+            prop=proposals,
+            ref_prop=ref_proposals_list,
             bboxes=det_bboxes,
             labels=det_labels,
             frame_id=frame_id,

@@ -6,7 +6,7 @@ model = dict(
         roi_head=dict(
             bbox_head=dict(bbox_coder=dict(clip_border=True), num_classes=1))))
 # data
-data_root = 'data/MOT20/'
+data_root = 'mmtracking/data/MOT20/'
 data = dict(
     train=dict(
         ann_file=data_root + 'annotations/train_cocoformat.json',

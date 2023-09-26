@@ -111,42 +111,6 @@ class Tracktor(BaseMultiObjectTracker):
             self.tracker.reset()
 
         x = self.detector.extract_feat(img)
-
-        # for a in x:
-        #     print(a.shape)
-
-        # Assume the tuple is named 'tensor_tuple'
-        # for idx, x_tensor in enumerate(x):
-        #     print(f"Processing tensor {idx}...")
-        #     print(f"Input tensor shape: {x_tensor.shape}")
-
-        #     # Convert the tensor to a numpy array
-        #     tensor_np = x_tensor.cpu().numpy()
-        #     print(f"Output numpy array shape: {tensor_np.shape}")
-
-        #     # Reshape the array to a 2D image
-        #     tensor_img = tensor_np.reshape(
-        #         tensor_np.shape[1], tensor_np.shape[2], tensor_np.shape[3], 1)
-        #     print(f"Output numpy array shape: {tensor_img.shape}")
-
-        #     # Scale the pixel values to the range [0, 255]
-        #     tensor_img = (tensor_img - tensor_img.min()) * \
-        #         (255 / (tensor_img.max() - tensor_img.min()))
-
-        #     # convert the numpy array to the uint8 data type
-        #     tensor_img = tensor_img.astype('uint8')
-
-        #     # # resize the image to a smaller size
-        #     # resized_arr = cv2.resize(tensor_img, (512, 512), interpolation=cv2.INTER_NEAREST)
-
-        #     # Save the image using OpenCV
-        #     output_path = 'mmtracking/demo/'
-        #     filename = os.path.join(output_path, f'tensor_{idx}.png')
-        #     cv2.imwrite(filename, tensor_img)
-
-
-
-
         if hasattr(self.detector, 'roi_head'):
             # TODO: check whether this is the case
             if public_bboxes is not None:
@@ -155,25 +119,6 @@ class Tracktor(BaseMultiObjectTracker):
             else:
                 proposals = self.detector.rpn_head.simple_test_rpn(
                     x, img_metas)
-                # print(proposals[0].shape)
-
-                # proposals_np =  proposals[0].cpu().numpy()
-                # proposals_np = (proposals_np - np.min(proposals_np)) * 255 / (np.max(proposals_np) - np.min(proposals_np))
-                # proposals_np = proposals_np.astype(np.uint8)
-                # image = np.reshape(proposals_np, (1000, 5, 1))
-                # cv2.imwrite("mmtracking/demo/tensor_image.jpg", image)
-
-                # x_np =  x[0].cpu().numpy()
-                # x_np = np.transpose(x_np, (1, 2, 3, 0))
-                # x_np = (x_np - np.min(x_np)) * 255 / (np.max(x_np) - np.min(x_np))
-                # x_np = x_np.astype(np.uint8)
-                # cv2.imwrite("mmtracking/demo/x_image.jpg", x_np)
-
-                # print(type(x))
-                # print(type(proposals))
-
-            
-
             det_bboxes, det_labels = self.detector.roi_head.simple_test_bboxes(
                 x,
                 img_metas,

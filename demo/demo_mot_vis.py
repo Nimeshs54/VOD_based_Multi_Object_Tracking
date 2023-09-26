@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 
 import mmcv
 
-from mmtrack.apis import inference_mot, init_model
+from mmtrack.apis import inference_mot, init_model, inference_mot_with_vid
 
 
 def main():
@@ -75,7 +75,8 @@ def main():
     for i, img in enumerate(imgs):
         if isinstance(img, str):
             img = osp.join(args.input, img)
-        result = inference_mot(model, img, frame_id=i)
+        # result = inference_mot(model, img, frame_id=i)
+        result = inference_mot_with_vid(model, img, frame_id=i)
         if args.output is not None:
             if IN_VIDEO or OUT_VIDEO:
                 out_file = osp.join(out_path, f'{i:06d}.jpg')

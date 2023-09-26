@@ -30,15 +30,17 @@ model = dict(
             'https://download.openmmlab.com/mmclassification/v0/resnet/resnet50_batch256_imagenet_20200708-cfb998bf.pth'  # noqa: E501
         )))
 # dataset settings
-data_root = 'data/MOT17_tiny/'
+# data_root = 'data/MOT17_tiny/'
 # data_root = 'mmtracking/data/MOT17_tiny/'
+data_root = 'mmtracking/data/MOT17/'
 
 data = dict(
     samples_per_gpu=1,
     workers_per_gpu=2,
     train=dict(
         data_prefix=data_root + 'reid/imgs',
-        ann_file=data_root + 'reid/meta/train_9.txt'),
+        ann_file=data_root + 'reid/meta/train_80.txt'),
+        # ann_file=data_root + 'reid/meta/train_9.txt'),
     val=dict(
         data_prefix=data_root + 'reid/imgs',
         ann_file=data_root + 'reid/meta/val_20.txt'),
@@ -47,15 +49,15 @@ data = dict(
         ann_file=data_root + 'reid/meta/val_20.txt'))
 
 # optimizer
-optimizer = dict(type='SGD', lr=0.1, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0125, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=None)
 # learning policy
 lr_config = dict(
     policy='step',
     warmup='linear',
-    warmup_iters=200,
-    warmup_ratio=1.0 / 200,
-    step=[1])
+    warmup_iters=1000,
+    warmup_ratio=1.0 / 1000,
+    step=[5])
 # runtime settings
 device = "cuda"
-total_epochs = 4
+total_epochs = 6

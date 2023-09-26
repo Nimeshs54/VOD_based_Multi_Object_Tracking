@@ -500,6 +500,13 @@ class MOTChallengeDataset(CocoVideoDataset):
             mean_ap, _ = eval_map(
                 bbox_results,
                 annotations,
+                iou_thr=0.75,
+                dataset=self.CLASSES,
+                logger=logger)
+            eval_results['mAP'] = mean_ap
+            mean_ap, _ = eval_map(
+                bbox_results,
+                annotations,
                 iou_thr=bbox_iou_thr,
                 dataset=self.CLASSES,
                 logger=logger)

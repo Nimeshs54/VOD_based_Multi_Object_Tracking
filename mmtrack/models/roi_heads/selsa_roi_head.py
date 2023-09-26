@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+
 from mmdet.core import bbox2result, bbox2roi
 from mmdet.models import HEADS, StandardRoIHead
 
@@ -184,4 +185,5 @@ class SelsaRoIHead(StandardRoIHead):
                 cfg=rcnn_test_cfg)
             det_bboxes.append(det_bbox)
             det_labels.append(det_label)
+
         return det_bboxes, det_labels
